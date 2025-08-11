@@ -143,38 +143,56 @@ export function convertToFunctionResponse(
   callId: string,
   llmContent: PartListUnion,
 ): PartListUnion {
+  console.log(`[DEBUG] convertToFunctionResponse: Converting tool "${toolName}" with callId "${callId}"`);
+  console.log(`[DEBUG] convertToFunctionResponse: Input llmContent:`, JSON.stringify(llmContent, null, 2));
+  
   const contentToProcess =
     Array.isArray(llmContent) && llmContent.length === 1
       ? llmContent[0]
       : llmContent;
 
+  console.log(`[DEBUG] convertToFunctionResponse: Content to process:`, JSON.stringify(contentToProcess, null, 2));
+
   if (typeof contentToProcess === 'string') {
-    return createFunctionResponsePart(callId, toolName, contentToProcess);
+    console.log(`[DEBUG] convertToFunctionResponse: Processing string content`);
+    const result = createFunctionResponsePart(callId, toolName, contentToProcess);
+    console.log(`[DEBUG] convertToFunctionResponse: String result:`, JSON.stringify(result, null, 2));
+    return result;
   }
 
   if (Array.isArray(contentToProcess)) {
+    console.log(`[DEBUG] convertToFunctionResponse: Processing array content`);
     const functionResponse = createFunctionResponsePart(
       callId,
       toolName,
       'Tool execution succeeded.',
     );
-    return [functionResponse, ...contentToProcess];
+    const result = [functionResponse, ...contentToProcess];
+    console.log(`[DEBUG] convertToFunctionResponse: Array result:`, JSON.stringify(result, null, 2));
+    return result;
   }
 
   // After this point, contentToProcess is a single Part object.
   if (contentToProcess.functionResponse) {
+    console.log(`[DEBUG] convertToFunctionResponse: Processing functionResponse content`);
     if (contentToProcess.functionResponse.response?.content) {
+      console.log(`[DEBUG] convertToFunctionResponse: Has response.content, extracting text`);
       const stringifiedOutput =
         getResponseTextFromParts(
           contentToProcess.functionResponse.response.content as Part[],
         ) || '';
-      return createFunctionResponsePart(callId, toolName, stringifiedOutput);
+      const result = createFunctionResponsePart(callId, toolName, stringifiedOutput);
+      console.log(`[DEBUG] convertToFunctionResponse: FunctionResponse with content result:`, JSON.stringify(result, null, 2));
+      return result;
     }
     // It's a functionResponse that we should pass through as is.
+    console.log(`[DEBUG] convertToFunctionResponse: Passing through functionResponse as is`);
+    console.log(`[DEBUG] convertToFunctionResponse: Pass-through result:`, JSON.stringify(contentToProcess, null, 2));
     return contentToProcess;
   }
 
   if (contentToProcess.inlineData || contentToProcess.fileData) {
+    console.log(`[DEBUG] convertToFunctionResponse: Processing binary content`);
     const mimeType =
       contentToProcess.inlineData?.mimeType ||
       contentToProcess.fileData?.mimeType ||
@@ -184,19 +202,27 @@ export function convertToFunctionResponse(
       toolName,
       `Binary content of type ${mimeType} was processed.`,
     );
-    return [functionResponse, contentToProcess];
+    const result = [functionResponse, contentToProcess];
+    console.log(`[DEBUG] convertToFunctionResponse: Binary result:`, JSON.stringify(result, null, 2));
+    return result;
   }
 
   if (contentToProcess.text !== undefined) {
-    return createFunctionResponsePart(callId, toolName, contentToProcess.text);
+    console.log(`[DEBUG] convertToFunctionResponse: Processing text content`);
+    const result = createFunctionResponsePart(callId, toolName, contentToProcess.text);
+    console.log(`[DEBUG] convertToFunctionResponse: Text result:`, JSON.stringify(result, null, 2));
+    return result;
   }
 
   // Default case for other kinds of parts.
-  return createFunctionResponsePart(
+  console.log(`[DEBUG] convertToFunctionResponse: Using default case`);
+  const result = createFunctionResponsePart(
     callId,
     toolName,
     'Tool execution succeeded.',
   );
+  console.log(`[DEBUG] convertToFunctionResponse: Default result:`, JSON.stringify(result, null, 2));
+  return result;
 }
 
 const createErrorResponse = (

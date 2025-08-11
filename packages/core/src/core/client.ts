@@ -121,6 +121,7 @@ export class GeminiClient {
   }
 
   async initialize(contentGeneratorConfig: ContentGeneratorConfig) {
+    
     this.contentGenerator = await createContentGenerator(
       contentGeneratorConfig,
       this.config,
@@ -486,20 +487,21 @@ export class GeminiClient {
         return turn;
       }
 
-      const nextSpeakerCheck = await checkNextSpeaker(
-        this.getChat(),
-        this,
-        signal,
-      );
+      // 暂时禁用 checkNextSpeaker，避免 schema 兼容性问题
+      // const nextSpeakerCheck = await checkNextSpeaker(
+      //   this.getChat(),
+      //   this,
+      //   signal,
+      // ).catch(() => null);
       logNextSpeakerCheck(
         this.config,
         new NextSpeakerCheckEvent(
           prompt_id,
           turn.finishReason?.toString() || '',
-          nextSpeakerCheck?.next_speaker || '',
+          '', // 暂时禁用 next_speaker 检查
         ),
       );
-      if (nextSpeakerCheck?.next_speaker === 'model') {
+      if (false) { // 暂时禁用 next_speaker 检查
         const nextRequest = [{ text: 'Please continue.' }];
         // This recursive call's events will be yielded out, but the final
         // turn object will be from the top-level call.

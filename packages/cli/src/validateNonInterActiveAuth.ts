@@ -29,7 +29,22 @@ export async function validateNonInteractiveAuth(
   useExternalAuth: boolean | undefined,
   nonInteractiveConfig: Config,
 ) {
-  const effectiveAuthType = configuredAuthType || getAuthTypeFromEnv();
+  // 首先检查 Config 中的 provider 参数
+  const provider = nonInteractiveConfig.getProvider();
+  let effectiveAuthType = configuredAuthType;
+  
+  // 如果设置了 provider，根据 provider 来决定 AuthType
+  if (provider && provider !== 'gemini') {
+    if (provider === 'openai') {
+      effectiveAuthType = AuthType.USE_OPENAI;
+    } else if (provider === 'deepseek' || provider === 'ollama') {
+      // 对于 deepseek 和 ollama，我们也使用 USE_OPENAI，因为它们是 OpenAI 兼容的
+      effectiveAuthType = AuthType.USE_OPENAI;
+    }
+  } else {
+    // 如果没有设置 provider 或 provider 是 gemini，则使用原来的逻辑
+    effectiveAuthType = effectiveAuthType || getAuthTypeFromEnv();
+  }
 
   if (!effectiveAuthType) {
     console.error(

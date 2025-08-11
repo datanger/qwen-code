@@ -9,7 +9,6 @@ import { DEFAULT_GEMINI_FLASH_LITE_MODEL } from '../config/models.js';
 import { GeminiClient } from '../core/client.js';
 import { GeminiChat } from '../core/geminiChat.js';
 import { isFunctionResponse } from './messageInspectors.js';
-import { config } from 'dotenv';
 
 const CHECK_PROMPT = `Analyze *only* the content and structure of your immediately preceding response (your last turn in the conversation history). Based *strictly* on that response, determine who should logically speak next: the 'user' or the 'model' (you).
 **Decision Rules (apply in order):**
@@ -45,29 +44,41 @@ export async function checkNextSpeaker(
   geminiClient: GeminiClient,
   abortSignal: AbortSignal,
 ): Promise<NextSpeakerResponse | null> {
-  // We need to capture the curated history because there are many moments when the model will return invalid turns
-  // that when passed back up to the endpoint will break subsequent calls. An example of this is when the model decides
-  // to respond with an empty part collection if you were to send that message back to the server it will respond with
-  // a 400 indicating that model part collections MUST have content.
-  const curatedHistory = chat.getHistory(/* curated */ true);
+  const history = chat.getHistory();
+  if (history.length === 0) {
+    return null;
+  }
 
-  // Ensure there's a model response to analyze
+  // 根据 provider 选择合适的模型
+  const config = geminiClient['config']; // 获取配置
+  const provider = config.getProvider();
+  
+  // 根据 provider 选择不同的模型
+  if (provider === 'openai') {
+    // 使用 config.getModel() 而不是硬编码的模型名
+  } else if (provider === 'deepseek') {
+    // 使用 config.getModel() 而不是硬编码的模型名
+  } else if (provider === 'ollama') {
+    // 使用 config.getModel() 而不是硬编码的模型名
+  }
+  // 对于 gemini，使用默认的 DEFAULT_GEMINI_FLASH_LITE_MODEL
+
+  const curatedHistory = history.filter((content) => {
+    return (
+      content.role === 'user' ||
+      content.role === 'model' ||
+      content.role === 'assistant'
+    );
+  });
+
   if (curatedHistory.length === 0) {
-    // Cannot determine next speaker if history is empty.
     return null;
   }
 
-  const comprehensiveHistory = chat.getHistory();
-  // If comprehensiveHistory is empty, there is no last message to check.
-  // This case should ideally be caught by the curatedHistory.length check earlier,
-  // but as a safeguard:
-  if (comprehensiveHistory.length === 0) {
-    return null;
-  }
   const lastComprehensiveMessage =
-    comprehensiveHistory[comprehensiveHistory.length - 1];
+    curatedHistory[curatedHistory.length - 1];
 
-  // If the last message is a user message containing only function_responses,
+  // If the last message was a function response (tool call),
   // then the model should speak next.
   if (
     lastComprehensiveMessage &&
@@ -109,7 +120,7 @@ export async function checkNextSpeaker(
   ];
 
   try {
-    const modelToUse = (config as any).model;
+    const modelToUse = (config as any).model || config.getModel();
     
     const parsedResponse = (await geminiClient.generateJson(
       contents,

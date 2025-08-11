@@ -53,6 +53,7 @@ export type ContentGeneratorConfig = {
   apiKey?: string;
   vertexai?: boolean;
   authType?: AuthType | undefined;
+  provider?: string;
   enableOpenAILogging?: boolean;
   // Timeout configuration in milliseconds
   timeout?: number;
@@ -81,11 +82,12 @@ export function createContentGeneratorConfig(
   const openaiApiKey = process.env.OPENAI_API_KEY;
 
   // Use runtime model from config if available; otherwise, fall back to parameter or default
-  const effectiveModel = config.getModel() || DEFAULT_GEMINI_MODEL;
+  const effectiveModel = (config as any).model || config.getModel() || DEFAULT_GEMINI_MODEL;
 
   const contentGeneratorConfig: ContentGeneratorConfig = {
     model: effectiveModel,
     authType,
+    provider: config.getProvider(),
     proxy: config?.getProxy(),
     enableOpenAILogging: config.getEnableOpenAILogging(),
     timeout: config.getContentGeneratorTimeout(),
@@ -125,8 +127,10 @@ export function createContentGeneratorConfig(
 
   if (authType === AuthType.USE_OPENAI && openaiApiKey) {
     contentGeneratorConfig.apiKey = openaiApiKey;
-    contentGeneratorConfig.model =
-      process.env.OPENAI_MODEL || DEFAULT_GEMINI_MODEL;
+    // 只有在 model 没有被正确设置时才使用默认值
+    if (!contentGeneratorConfig.model || contentGeneratorConfig.model === DEFAULT_GEMINI_MODEL) {
+      contentGeneratorConfig.model = process.env.OPENAI_MODEL || DEFAULT_GEMINI_MODEL;
+    }
 
     return contentGeneratorConfig;
   }
@@ -139,12 +143,63 @@ export async function createContentGenerator(
   gcConfig: Config,
   sessionId?: string,
 ): Promise<ContentGenerator> {
+  
   const version = process.env.CLI_VERSION || process.version;
   const httpOptions = {
     headers: {
       'User-Agent': `GeminiCLI/${version} (${process.platform}; ${process.arch})`,
     },
   };
+
+  // 根据 provider 选择不同的适配器
+  const provider = config.provider || process.env.GEMINI_PROVIDER || 'gemini';
+
+  if (provider === 'openai') {
+    const apiKey = process.env.OPENAI_API_KEY || '';
+    const apiBase = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+    const apiVersion = process.env.OPENAI_API_VERSION || '';
+    const apiModel = config.model || process.env.OPENAI_API_MODEL || 'gpt-3.5-turbo';
+    const { OpenAIAdapter } = await import('./openaiAdapter.js');
+    return new OpenAIAdapter({
+      provider: 'openai',
+      model: apiModel,
+      baseUrl: apiBase,
+      apiKey,
+      apiVersion,
+      verify: true
+    });
+  }
+  
+  if (provider === 'deepseek') {
+    const apiKey = process.env.DEEPSEEK_API_KEY || '';
+    const apiBase = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
+    const apiVersion = process.env.DEEPSEEK_API_VERSION || '';
+    const apiModel = config.model || process.env.DEEPSEEK_API_MODEL || 'deepseek-chat';
+    const { OpenAIAdapter } = await import('./openaiAdapter.js');
+    return new OpenAIAdapter({
+      provider: 'deepseek',
+      model: apiModel,
+      baseUrl: apiBase,
+      apiKey,
+      apiVersion,
+      verify: true
+    });
+  }
+
+  if (provider === 'ollama') {
+    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const apiModel = config.model || process.env.OLLAMA_MODEL || 'llama2';
+    const { OpenAIAdapter } = await import('./openaiAdapter.js');
+    return new OpenAIAdapter({
+      provider: 'ollama',
+      model: apiModel,
+      baseUrl: baseUrl,
+      apiKey: '',
+      apiVersion: '',
+      verify: false
+    });
+  }
+
   if (
     config.authType === AuthType.LOGIN_WITH_GOOGLE ||
     config.authType === AuthType.CLOUD_SHELL
@@ -185,6 +240,6 @@ export async function createContentGenerator(
   }
 
   throw new Error(
-    `Error creating contentGenerator: Unsupported authType: ${config.authType}`,
+    `Error creating contentGenerator: Unsupported authType: ${config.authType} or provider: ${provider}`,
   );
 }
