@@ -59,6 +59,10 @@ export type ContentGeneratorConfig = {
   timeout?: number;
   // Maximum retries for failed requests
   maxRetries?: number;
+  // Stream configuration for providers that support it
+  stream?: boolean;
+  // Base URL for the API endpoint
+  baseURL?: string;
   samplingParams?: {
     top_p?: number;
     top_k?: number;
@@ -155,49 +159,59 @@ export async function createContentGenerator(
   const provider = config.provider || process.env.GEMINI_PROVIDER || 'gemini';
 
   if (provider === 'openai') {
-    const apiKey = process.env.OPENAI_API_KEY || '';
-    const apiBase = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-    const apiVersion = process.env.OPENAI_API_VERSION || '';
-    const apiModel = config.model || process.env.OPENAI_API_MODEL || 'gpt-3.5-turbo';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'openai',
-      model: apiModel,
-      baseUrl: apiBase,
-      apiKey,
-      apiVersion,
-      verify: true
-    });
+    if (!config.apiKey) {
+      throw new Error('OpenAI API key is required');
+    }
+    
+    // Import OpenAIContentGenerator dynamically to avoid circular dependencies
+    const { OpenAIContentGenerator } = await import(
+      './openaiContentGenerator.js'
+    );
+    
+    return new OpenAIContentGenerator(
+      config.apiKey,
+      config.model || process.env.OPENAI_API_MODEL || 'gpt-3.5-turbo',
+      gcConfig,
+      'openai',
+      config.baseURL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
+    );
   }
   
   if (provider === 'deepseek') {
-    const apiKey = process.env.DEEPSEEK_API_KEY || '';
-    const apiBase = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
-    const apiVersion = process.env.DEEPSEEK_API_VERSION || '';
-    const apiModel = config.model || process.env.DEEPSEEK_API_MODEL || 'deepseek-chat';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'deepseek',
-      model: apiModel,
-      baseUrl: apiBase,
-      apiKey,
-      apiVersion,
-      verify: true
-    });
+    if (!config.apiKey) {
+      throw new Error('DeepSeek API key is required');
+    }
+    
+    // Import OpenAIContentGenerator dynamically to avoid circular dependencies
+    const { OpenAIContentGenerator } = await import(
+      './openaiContentGenerator.js'
+    );
+    
+    return new OpenAIContentGenerator(
+      config.apiKey,
+      config.model || process.env.DEEPSEEK_API_MODEL || 'deepseek-chat',
+      gcConfig,
+      'deepseek',
+      config.baseURL || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1'
+    );
   }
 
   if (provider === 'ollama') {
-    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-    const apiModel = config.model || process.env.OLLAMA_MODEL || 'llama2';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'ollama',
-      model: apiModel,
-      baseUrl: baseUrl,
-      apiKey: '',
-      apiVersion: '',
-      verify: false
-    });
+    // Import OpenAIContentGenerator dynamically to avoid circular dependencies
+    const { OpenAIContentGenerator } = await import(
+      './openaiContentGenerator.js'
+    );
+    
+    // For Ollama, we need to include the /v1 path in the baseURL
+    const ollamaBaseURL = (config.baseURL || process.env.OLLAMA_BASE_URL || 'http://localhost:11434') + '/v1';
+    
+    return new OpenAIContentGenerator(
+      '', // Ollama doesn't require API key
+      config.model || process.env.OLLAMA_MODEL || 'llama2',
+      gcConfig,
+      'ollama',
+      ollamaBaseURL
+    );
   }
 
   if (
@@ -236,7 +250,13 @@ export async function createContentGenerator(
     );
 
     // Always use OpenAIContentGenerator, logging is controlled by enableOpenAILogging flag
-    return new OpenAIContentGenerator(config.apiKey, config.model, gcConfig);
+    return new OpenAIContentGenerator(
+      config.apiKey, 
+      config.model, 
+      gcConfig,
+      config.provider,
+      config.baseURL
+    );
   }
 
   throw new Error(

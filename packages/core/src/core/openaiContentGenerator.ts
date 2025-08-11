@@ -81,6 +81,7 @@ export class OpenAIContentGenerator implements ContentGenerator {
   private client: OpenAI;
   private model: string;
   private config: Config;
+  private provider: string;
   private streamingToolCalls: Map<
     number,
     {
@@ -90,10 +91,19 @@ export class OpenAIContentGenerator implements ContentGenerator {
     }
   > = new Map();
 
-  constructor(apiKey: string, model: string, config: Config) {
+  constructor(
+    apiKey: string, 
+    model: string, 
+    config: Config,
+    provider?: string,
+    baseURL?: string
+  ) {
     this.model = model;
     this.config = config;
-    const baseURL = process.env.OPENAI_BASE_URL || '';
+    this.provider = provider || 'openai';
+    
+    // Use provided baseURL or fall back to environment variable
+    const effectiveBaseURL = baseURL || process.env.OPENAI_BASE_URL || '';
 
     // Configure timeout settings - using progressive timeouts
     const timeoutConfig = {
@@ -115,7 +125,7 @@ export class OpenAIContentGenerator implements ContentGenerator {
     }
 
     // Check if using OpenRouter and add required headers
-    const isOpenRouter = baseURL.includes('openrouter.ai');
+    const isOpenRouter = effectiveBaseURL.includes('openrouter.ai');
     const defaultHeaders = isOpenRouter
       ? {
           'HTTP-Referer': 'https://github.com/QwenLM/qwen-code.git',
@@ -125,7 +135,7 @@ export class OpenAIContentGenerator implements ContentGenerator {
 
     this.client = new OpenAI({
       apiKey,
-      baseURL,
+      baseURL: effectiveBaseURL,
       timeout: timeoutConfig.timeout,
       maxRetries: timeoutConfig.maxRetries,
       defaultHeaders,
@@ -163,6 +173,27 @@ export class OpenAIContentGenerator implements ContentGenerator {
       errorMessage.includes('request timed out') ||
       errorMessage.includes('deadline exceeded')
     );
+  }
+
+  /**
+   * Get the provider name
+   */
+  getProvider(): string {
+    return this.provider;
+  }
+
+  /**
+   * Get the model name
+   */
+  getModel(): string {
+    return this.model;
+  }
+
+  /**
+   * Get the base URL
+   */
+  getBaseURL(): string {
+    return this.client.baseURL || '';
   }
 
   async generateContent(
