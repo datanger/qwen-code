@@ -9,7 +9,6 @@ import { DEFAULT_GEMINI_FLASH_LITE_MODEL } from '../config/models.js';
 import { GeminiClient } from '../core/client.js';
 import { GeminiChat } from '../core/geminiChat.js';
 import { isFunctionResponse } from './messageInspectors.js';
-import { config } from 'dotenv';
 
 const CHECK_PROMPT = `Analyze *only* the content and structure of your immediately preceding response (your last turn in the conversation history). Based *strictly* on that response, determine who should logically speak next: the 'user' or the 'model' (you).
 **Decision Rules (apply in order):**
@@ -109,13 +108,11 @@ export async function checkNextSpeaker(
   ];
 
   try {
-    const modelToUse = (config as any).model;
-    
     const parsedResponse = (await geminiClient.generateJson(
       contents,
       RESPONSE_SCHEMA,
       abortSignal,
-      modelToUse,
+      DEFAULT_GEMINI_FLASH_LITE_MODEL,
     )) as unknown as NextSpeakerResponse;
 
     if (

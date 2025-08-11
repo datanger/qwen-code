@@ -44,7 +44,7 @@ export async function executeToolCall(
       prompt_id: toolCallRequest.prompt_id,
     });
     // Ensure the response structure matches what the API expects for an error
-    const errorResponse = {
+    return {
       callId: toolCallRequest.callId,
       responseParts: [
         {
@@ -59,7 +59,6 @@ export async function executeToolCall(
       error,
       errorType: ToolErrorType.TOOL_NOT_REGISTERED,
     };
-    return errorResponse;
   }
 
   try {
@@ -72,6 +71,7 @@ export async function executeToolCall(
     );
 
     const tool_output = toolResult.llmContent;
+
     const tool_display = toolResult.returnDisplay;
 
     const durationMs = Date.now() - startTime;
@@ -95,7 +95,7 @@ export async function executeToolCall(
       tool_output,
     );
 
-    const successResponse = {
+    return {
       callId: toolCallRequest.callId,
       responseParts: response,
       resultDisplay: tool_display,
@@ -106,8 +106,6 @@ export async function executeToolCall(
       errorType:
         toolResult.error === undefined ? undefined : toolResult.error.type,
     };
-    
-    return successResponse;
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
     const durationMs = Date.now() - startTime;
@@ -122,7 +120,7 @@ export async function executeToolCall(
       error_type: ToolErrorType.UNHANDLED_EXCEPTION,
       prompt_id: toolCallRequest.prompt_id,
     });
-    const exceptionResponse = {
+    return {
       callId: toolCallRequest.callId,
       responseParts: [
         {
@@ -137,6 +135,5 @@ export async function executeToolCall(
       error,
       errorType: ToolErrorType.UNHANDLED_EXCEPTION,
     };
-    return exceptionResponse;
   }
 }

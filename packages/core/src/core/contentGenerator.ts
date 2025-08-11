@@ -46,6 +46,7 @@ export enum AuthType {
   USE_VERTEX_AI = 'vertex-ai',
   CLOUD_SHELL = 'cloud-shell',
   USE_OPENAI = 'openai',
+  QWEN_OAUTH = 'qwen-oauth',
 }
 
 export type ContentGeneratorConfig = {
@@ -53,7 +54,6 @@ export type ContentGeneratorConfig = {
   apiKey?: string;
   vertexai?: boolean;
   authType?: AuthType | undefined;
-  provider?: string;
   enableOpenAILogging?: boolean;
   // Timeout configuration in milliseconds
   timeout?: number;
@@ -82,12 +82,11 @@ export function createContentGeneratorConfig(
   const openaiApiKey = process.env.OPENAI_API_KEY;
 
   // Use runtime model from config if available; otherwise, fall back to parameter or default
-  const effectiveModel = (config as any).model || config.getModel() || DEFAULT_GEMINI_MODEL;
+  const effectiveModel = config.getModel() || DEFAULT_GEMINI_MODEL;
 
   const contentGeneratorConfig: ContentGeneratorConfig = {
     model: effectiveModel,
     authType,
-    provider: config.getProvider(),
     proxy: config?.getProxy(),
     enableOpenAILogging: config.getEnableOpenAILogging(),
     timeout: config.getContentGeneratorTimeout(),
@@ -127,10 +126,17 @@ export function createContentGeneratorConfig(
 
   if (authType === AuthType.USE_OPENAI && openaiApiKey) {
     contentGeneratorConfig.apiKey = openaiApiKey;
-    // 只有在 model 没有被正确设置时才使用默认值
-    if (!contentGeneratorConfig.model || contentGeneratorConfig.model === DEFAULT_GEMINI_MODEL) {
-      contentGeneratorConfig.model = process.env.OPENAI_MODEL || DEFAULT_GEMINI_MODEL;
-    }
+    contentGeneratorConfig.model =
+      process.env.OPENAI_MODEL || DEFAULT_GEMINI_MODEL;
+
+    return contentGeneratorConfig;
+  }
+
+  if (authType === AuthType.QWEN_OAUTH) {
+    // For Qwen OAuth, we'll handle the API key dynamically in createContentGenerator
+    // Set a special marker to indicate this is Qwen OAuth
+    contentGeneratorConfig.apiKey = 'QWEN_OAUTH_DYNAMIC_TOKEN';
+    contentGeneratorConfig.model = config.getModel() || DEFAULT_GEMINI_MODEL;
 
     return contentGeneratorConfig;
   }
@@ -143,63 +149,12 @@ export async function createContentGenerator(
   gcConfig: Config,
   sessionId?: string,
 ): Promise<ContentGenerator> {
-  
   const version = process.env.CLI_VERSION || process.version;
   const httpOptions = {
     headers: {
       'User-Agent': `GeminiCLI/${version} (${process.platform}; ${process.arch})`,
     },
   };
-
-  // 根据 provider 选择不同的适配器
-  const provider = config.provider || process.env.GEMINI_PROVIDER || 'gemini';
-
-  if (provider === 'openai') {
-    const apiKey = process.env.OPENAI_API_KEY || '';
-    const apiBase = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-    const apiVersion = process.env.OPENAI_API_VERSION || '';
-    const apiModel = config.model || process.env.OPENAI_API_MODEL || 'gpt-3.5-turbo';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'openai',
-      model: apiModel,
-      baseUrl: apiBase,
-      apiKey,
-      apiVersion,
-      verify: true
-    });
-  }
-  
-  if (provider === 'deepseek') {
-    const apiKey = process.env.DEEPSEEK_API_KEY || '';
-    const apiBase = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
-    const apiVersion = process.env.DEEPSEEK_API_VERSION || '';
-    const apiModel = config.model || process.env.DEEPSEEK_API_MODEL || 'deepseek-chat';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'deepseek',
-      model: apiModel,
-      baseUrl: apiBase,
-      apiKey,
-      apiVersion,
-      verify: true
-    });
-  }
-
-  if (provider === 'ollama') {
-    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-    const apiModel = config.model || process.env.OLLAMA_MODEL || 'llama2';
-    const { OpenAIAdapter } = await import('./openaiAdapter.js');
-    return new OpenAIAdapter({
-      provider: 'ollama',
-      model: apiModel,
-      baseUrl: baseUrl,
-      apiKey: '',
-      apiVersion: '',
-      verify: false
-    });
-  }
-
   if (
     config.authType === AuthType.LOGIN_WITH_GOOGLE ||
     config.authType === AuthType.CLOUD_SHELL
@@ -239,7 +194,33 @@ export async function createContentGenerator(
     return new OpenAIContentGenerator(config.apiKey, config.model, gcConfig);
   }
 
+  if (config.authType === AuthType.QWEN_OAUTH) {
+    if (config.apiKey !== 'QWEN_OAUTH_DYNAMIC_TOKEN') {
+      throw new Error('Invalid Qwen OAuth configuration');
+    }
+
+    // Import required classes dynamically
+    const { getQwenOAuthClient: getQwenOauthClient } = await import(
+      '../qwen/qwenOAuth2.js'
+    );
+    const { QwenContentGenerator } = await import(
+      '../qwen/qwenContentGenerator.js'
+    );
+
+    try {
+      // Get the Qwen OAuth client (now includes integrated token management)
+      const qwenClient = await getQwenOauthClient(gcConfig);
+
+      // Create the content generator with dynamic token management
+      return new QwenContentGenerator(qwenClient, config.model, gcConfig);
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize Qwen: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   throw new Error(
-    `Error creating contentGenerator: Unsupported authType: ${config.authType} or provider: ${provider}`,
+    `Error creating contentGenerator: Unsupported authType: ${config.authType}`,
   );
 }

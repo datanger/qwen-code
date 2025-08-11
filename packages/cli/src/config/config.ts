@@ -42,7 +42,6 @@ const logger = {
 
 export interface CliArgs {
   model: string | undefined;
-  provider: string | undefined;
   sandbox: boolean | string | undefined;
   sandboxImage: string | undefined;
   debug: boolean | undefined;
@@ -83,11 +82,6 @@ export async function parseArguments(): Promise<CliArgs> {
       type: 'string',
       description: `Model`,
       default: process.env.GEMINI_MODEL,
-    })
-    .option('provider', {
-      type: 'string',
-      description: 'LLM provider: gemini, openai, deepseek, ollama',
-      default: process.env.GEMINI_PROVIDER || 'gemini',
     })
     .option('prompt', {
       alias: 'p',
@@ -473,10 +467,9 @@ export async function loadCliConfig(
     fileDiscoveryService: fileService,
     bugCommand: settings.bugCommand,
     model: argv.model || settings.model || DEFAULT_GEMINI_MODEL,
-    provider: argv.provider || process.env.GEMINI_PROVIDER || 'gemini',
     extensionContextFilePaths,
     maxSessionTurns: settings.maxSessionTurns ?? -1,
-    sessionTokenLimit: settings.sessionTokenLimit ?? 32000,
+    sessionTokenLimit: settings.sessionTokenLimit ?? -1,
     maxFolderItems: settings.maxFolderItems ?? 20,
     experimentalAcp: argv.experimentalAcp || false,
     listExtensions: argv.listExtensions || false,
