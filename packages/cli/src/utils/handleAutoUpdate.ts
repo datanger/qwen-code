@@ -18,6 +18,11 @@ export function handleAutoUpdate(
   projectRoot: string,
   spawnFn: typeof spawn = spawnWrapper,
 ) {
+  // Completely disable auto updates if DISABLE_UPDATES is set
+  if (process.env.DISABLE_UPDATES === 'true') {
+    return;
+  }
+  
   if (!info) {
     return;
   }

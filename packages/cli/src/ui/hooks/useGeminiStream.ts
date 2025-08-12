@@ -79,7 +79,7 @@ enum StreamProcessingStatus {
  * API interaction, and tool call lifecycle.
  */
 export const useGeminiStream = (
-  geminiClient: GeminiClient,
+  geminiClient: GeminiClient | undefined,
   history: HistoryItem[],
   addItem: UseHistoryManagerReturn['addItem'],
   config: Config,
@@ -110,6 +110,21 @@ export const useGeminiStream = (
     }
     return new GitService(config.getProjectRoot());
   }, [config]);
+
+  // Check if geminiClient is properly initialized
+  useEffect(() => {
+    if (!geminiClient) {
+      setInitError('GeminiClient not initialized. Please check configuration.');
+      return;
+    }
+    
+    if (!geminiClient.isInitialized()) {
+      setInitError('GeminiClient not fully initialized. Please wait or restart the application.');
+      return;
+    }
+    
+    setInitError(null);
+  }, [geminiClient]);
 
   const [toolCalls, scheduleToolCalls, markToolsAsSubmitted] =
     useReactToolScheduler(
@@ -663,6 +678,19 @@ export const useGeminiStream = (
 
       setIsResponding(true);
       setInitError(null);
+
+      // Additional safety check for geminiClient
+      if (!geminiClient) {
+        setInitError('GeminiClient is not available. Please restart the application.');
+        setIsResponding(false);
+        return;
+      }
+
+      if (!geminiClient.isInitialized()) {
+        setInitError('GeminiClient is not fully initialized. Please wait or restart the application.');
+        setIsResponding(false);
+        return;
+      }
 
       try {
         const stream = geminiClient.sendMessageStream(

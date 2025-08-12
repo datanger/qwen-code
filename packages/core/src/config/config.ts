@@ -625,6 +625,9 @@ export class Config {
   }
 
   getGeminiClient(): GeminiClient {
+    if (!this.geminiClient) {
+      throw new Error('GeminiClient not initialized. Please ensure config.initialize() has been called.');
+    }
     return this.geminiClient;
   }
 

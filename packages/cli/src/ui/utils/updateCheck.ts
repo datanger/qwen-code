@@ -39,6 +39,11 @@ function getBestAvailableUpdate(
 }
 
 export async function checkForUpdates(): Promise<UpdateObject | null> {
+  // Completely disable update checks if DISABLE_UPDATES is set
+  if (process.env.DISABLE_UPDATES === 'true') {
+    return null;
+  }
+  
   try {
     // Skip update check when running from source (development mode)
     if (process.env.DEV === 'true') {

@@ -69,7 +69,7 @@ export const useShellCommandProcessor = (
   onExec: (command: Promise<void>) => void,
   onDebugMessage: (message: string) => void,
   config: Config,
-  geminiClient: GeminiClient,
+  geminiClient: GeminiClient | undefined,
 ) => {
   const handleShellCommand = useCallback(
     (rawQuery: PartListUnion, abortSignal: AbortSignal): boolean => {
@@ -251,11 +251,13 @@ export const useShellCommandProcessor = (
               );
 
               // Add the same complete, contextual result to the LLM's history.
-              addShellCommandToGeminiHistory(
-                geminiClient,
-                rawQuery,
-                finalOutput,
-              );
+              if (geminiClient) {
+                addShellCommandToGeminiHistory(
+                  geminiClient,
+                  rawQuery,
+                  finalOutput,
+                );
+              }
             })
             .catch((err) => {
               setPendingHistoryItem(null);
