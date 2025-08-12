@@ -79,11 +79,11 @@ export function createContentGeneratorConfig(
   config: Config,
   authType: AuthType | undefined,
 ): ContentGeneratorConfig {
+  // Get API keys from environment variables
   const geminiApiKey = process.env.GEMINI_API_KEY || undefined;
-  const googleApiKey = process.env.GOOGLE_API_KEY || undefined;
-  const googleCloudProject = process.env.GOOGLE_CLOUD_PROJECT || undefined;
-  const googleCloudLocation = process.env.GOOGLE_CLOUD_LOCATION || undefined;
-  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const openaiApiKey = process.env.OPENAI_API_KEY || undefined;
+  const deepseekApiKey = process.env.DEEPSEEK_API_KEY || undefined;
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || undefined;
 
   // Use runtime model from config if available; otherwise, fall back to parameter or default
   const effectiveModel = (config as any).model || config.getModel() || DEFAULT_GEMINI_MODEL;
@@ -99,44 +99,20 @@ export function createContentGeneratorConfig(
     samplingParams: config.getSamplingParams(),
   };
 
-  // If we are using Google auth or we are in Cloud Shell, there is nothing else to validate for now
-  if (
-    authType === AuthType.LOGIN_WITH_GOOGLE ||
-    authType === AuthType.CLOUD_SHELL
-  ) {
-    return contentGeneratorConfig;
-  }
-
-  if (authType === AuthType.USE_GEMINI && geminiApiKey) {
+  // Set API key based on provider
+  const provider = config.getProvider() || 'gemini';
+  
+  if (provider === 'openai' && openaiApiKey) {
+    contentGeneratorConfig.apiKey = openaiApiKey;
+    contentGeneratorConfig.baseURL = process.env.OPENAI_BASE_URL;
+  } else if (provider === 'deepseek' && deepseekApiKey) {
+    contentGeneratorConfig.apiKey = deepseekApiKey;
+    contentGeneratorConfig.baseURL = process.env.DEEPSEEK_API_BASE;
+  } else if (provider === 'ollama') {
+    contentGeneratorConfig.baseURL = ollamaBaseUrl || 'http://localhost:11434';
+  } else if (provider === 'gemini' && geminiApiKey) {
     contentGeneratorConfig.apiKey = geminiApiKey;
     contentGeneratorConfig.vertexai = false;
-    getEffectiveModel(
-      contentGeneratorConfig.apiKey,
-      contentGeneratorConfig.model,
-      contentGeneratorConfig.proxy,
-    );
-
-    return contentGeneratorConfig;
-  }
-
-  if (
-    authType === AuthType.USE_VERTEX_AI &&
-    (googleApiKey || (googleCloudProject && googleCloudLocation))
-  ) {
-    contentGeneratorConfig.apiKey = googleApiKey;
-    contentGeneratorConfig.vertexai = true;
-
-    return contentGeneratorConfig;
-  }
-
-  if (authType === AuthType.USE_OPENAI && openaiApiKey) {
-    contentGeneratorConfig.apiKey = openaiApiKey;
-    // 只有在 model 没有被正确设置时才使用默认值
-    if (!contentGeneratorConfig.model || contentGeneratorConfig.model === DEFAULT_GEMINI_MODEL) {
-      contentGeneratorConfig.model = process.env.OPENAI_MODEL || DEFAULT_GEMINI_MODEL;
-    }
-
-    return contentGeneratorConfig;
   }
 
   return contentGeneratorConfig;
@@ -157,12 +133,16 @@ export async function createContentGenerator(
 
   // 根据 provider 选择不同的适配器
   const provider = config.provider || process.env.GEMINI_PROVIDER || 'gemini';
+  
+  console.log('[DEBUG] Creating content generator with provider:', provider);
+  console.log('[DEBUG] Config:', JSON.stringify(config, null, 2));
 
   if (provider === 'openai') {
     if (!config.apiKey) {
       throw new Error('OpenAI API key is required');
     }
     
+    console.log('[DEBUG] Creating OpenAI content generator');
     // Import OpenAIContentGenerator dynamically to avoid circular dependencies
     const { OpenAIContentGenerator } = await import(
       './openaiContentGenerator.js'
@@ -182,6 +162,7 @@ export async function createContentGenerator(
       throw new Error('DeepSeek API key is required');
     }
     
+    console.log('[DEBUG] Creating DeepSeek content generator');
     // Import OpenAIContentGenerator dynamically to avoid circular dependencies
     const { OpenAIContentGenerator } = await import(
       './openaiContentGenerator.js'
@@ -197,6 +178,7 @@ export async function createContentGenerator(
   }
 
   if (provider === 'ollama') {
+    console.log('[DEBUG] Creating Ollama content generator');
     // Import OpenAIContentGenerator dynamically to avoid circular dependencies
     const { OpenAIContentGenerator } = await import(
       './openaiContentGenerator.js'
@@ -214,52 +196,29 @@ export async function createContentGenerator(
     );
   }
 
-  if (
-    config.authType === AuthType.LOGIN_WITH_GOOGLE ||
-    config.authType === AuthType.CLOUD_SHELL
-  ) {
-    return createCodeAssistContentGenerator(
-      httpOptions,
-      config.authType,
-      gcConfig,
-      sessionId,
-    );
-  }
-
-  if (
-    config.authType === AuthType.USE_GEMINI ||
-    config.authType === AuthType.USE_VERTEX_AI
-  ) {
-    const googleGenAI = new GoogleGenAI({
-      apiKey: config.apiKey === '' ? undefined : config.apiKey,
-      vertexai: config.vertexai,
-      httpOptions,
-    });
-
-    return googleGenAI.models;
-  }
-
-  if (config.authType === AuthType.USE_OPENAI) {
-    if (!config.apiKey) {
-      throw new Error('OpenAI API key is required');
+  // Default to Gemini/Google
+  if (provider === 'gemini') {
+    console.log('[DEBUG] Creating Gemini content generator');
+    if (config.apiKey) {
+      const googleGenAI = new GoogleGenAI({
+        apiKey: config.apiKey,
+        vertexai: false,
+        httpOptions,
+      });
+      return googleGenAI.models;
+    } else {
+      // Fallback to code assist if no API key
+      console.log('[DEBUG] No Gemini API key, falling back to code assist');
+      return createCodeAssistContentGenerator(
+        httpOptions,
+        AuthType.USE_GEMINI,
+        gcConfig,
+        sessionId,
+      );
     }
-
-    // Import OpenAIContentGenerator dynamically to avoid circular dependencies
-    const { OpenAIContentGenerator } = await import(
-      './openaiContentGenerator.js'
-    );
-
-    // Always use OpenAIContentGenerator, logging is controlled by enableOpenAILogging flag
-    return new OpenAIContentGenerator(
-      config.apiKey, 
-      config.model, 
-      gcConfig,
-      config.provider,
-      config.baseURL
-    );
   }
 
   throw new Error(
-    `Error creating contentGenerator: Unsupported authType: ${config.authType} or provider: ${provider}`,
+    `Error creating contentGenerator: Unsupported provider: ${provider}`,
   );
 }

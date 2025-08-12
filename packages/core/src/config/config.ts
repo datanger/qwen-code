@@ -379,6 +379,31 @@ export class Config {
     }
     this.promptRegistry = new PromptRegistry();
     this.toolRegistry = await this.createToolRegistry();
+    
+    // Initialize GeminiClient if not already initialized
+    if (!this.geminiClient) {
+      console.log('[DEBUG] Initializing GeminiClient...');
+      console.log('[DEBUG] Current provider:', this.provider);
+      console.log('[DEBUG] Current model:', this.model);
+      
+      // Create content generator config based on current provider
+      const contentGeneratorConfig = createContentGeneratorConfig(
+        this,
+        undefined, // No specific auth type needed
+      );
+      
+      console.log('[DEBUG] Content generator config created:', JSON.stringify(contentGeneratorConfig, null, 2));
+      
+      // Create and initialize new client
+      const newGeminiClient = new GeminiClient(this);
+      await newGeminiClient.initialize(contentGeneratorConfig);
+      
+      // Assign to instance properties
+      this.contentGeneratorConfig = contentGeneratorConfig;
+      this.geminiClient = newGeminiClient;
+      
+      console.log('[DEBUG] GeminiClient initialized successfully');
+    }
   }
 
   async refreshAuth(authMethod: AuthType) {
@@ -388,7 +413,7 @@ export class Config {
       existingHistory = this.geminiClient.getHistory();
     }
 
-    // Create new content generator config
+    // Create new content generator config based on current provider
     const newContentGeneratorConfig = createContentGeneratorConfig(
       this,
       authMethod,

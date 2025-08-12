@@ -58,26 +58,14 @@ class GeminiAgent implements Agent {
   ) {}
 
   async initialize(_: acp.InitializeParams): Promise<acp.InitializeResponse> {
-    let isAuthenticated = false;
-    if (this.settings.merged.selectedAuthType) {
-      try {
-        await this.config.refreshAuth(this.settings.merged.selectedAuthType);
-        isAuthenticated = true;
-      } catch (error) {
-        console.error('Failed to refresh auth:', error);
-      }
-    }
+    // No authentication needed - provider and API keys are handled in contentGenerator
+    const isAuthenticated = true;
     return { protocolVersion: acp.LATEST_PROTOCOL_VERSION, isAuthenticated };
   }
 
   async authenticate(): Promise<void> {
-    await clearCachedCredentialFile();
-    await this.config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
-    this.settings.setValue(
-      SettingScope.User,
-      'selectedAuthType',
-      AuthType.LOGIN_WITH_GOOGLE,
-    );
+    // No authentication needed - just return
+    return;
   }
 
   async cancelSendMessage(): Promise<void> {
